@@ -1,0 +1,260 @@
+==========================================================================
+               CYT300 CAPSTONE PROJECT: SECURITY IN BIG DATA
+                                   GROUP 2
+                              IMPLEMENTATION PART 3
+==========================================================================
+
+Specify localhost as hadoop in hosts file
+nano /etc/hosts
+
+Install kerberos server
+sudo apt-get install krb5-kdc krb5-admin-server
+
+Enter the your desired realm name, here we will use group2.com 
+Then also enter the host name which we entered as hadoop
+
+After installation, edit Kerberos configuration file 
+nano /etc/krb5.conf 
+and add the following code for logs and realm details:
+[logging]
+    default = FILE:/var/log/krb5libs.log
+    kdc = FILE:/var/krb5kdc.log 
+    admin_server = FILE:/var/log/kadmind.log 
+[libdefaults]
+    default_realm = group2.com
+
+    group2.com = {
+        kdc = hadoop:88
+        admin_server = hadoop
+    }
+
+Now initialize the realm using: (Note: you will be asked to set up a Master Key. Please use a complex key and do not forget it.)
+sudo krb5_newrealm
+sudo /etc/init.d/krb5-kdc restart
+
+Setup admin user in ACL by editing
+nano /etc/krb5kdc/kadm5.acl
+
+paste the following line in the file:
+    */admin@group2.com *
+
+Create New Database in Kerberos
+sudo kdb5_util create -r group2.com -s
+sudo kadmin.local
+kadmin.local: addprinc admin/admin
+
+Restart the admin server.
+    sudo service krb5-admin-server restart
+
+
+Test Kerberos ticket
+    klist
+
+Add the Hadoop Principals to Kerberos
+kadmin
+addprinc -randkey hdfs/hadoop@group2.com
+addprinc -randkey mapred/hadoop@group2.com
+addprinc -randkey HTTP/hadoop@group2.com
+addprinc -randkey yarn/hadoop@group2.com
+
+Create the keytabs for the principals
+sudo kadmin.local
+xst -norandkey -k hdfs.keytab hdfs/hadoop@group2.com HTTP/hadoop@group2.com
+xst -norandkey -k mapred.keytab mapred/hadoop@group2.com HTTP/hadoop@group2.com
+xst -norandkey -k yarn.keytab yarn/hadoop@group2.com HTTP/hadoop@group2.com
+
+Now we just need to append some configuration in each of Hadoop's main configuration files
+
+Append the following code to core-site.xml:
+
+<!-- Kerberos Configuration -->
+
+<property>
+  <name>hadoop.security.authentication</name>
+  <value>kerberos</value>
+</property>
+<property>
+  <name>hadoop.security.authorization</name>
+  <value>true</value>
+</property>
+
+Append the following code to yarn-site.xml:
+
+<!-- Kerberos Configuration -->
+
+<property>
+     <name>yarn.resourcemanager.principal</name>
+     <value>yarn/hadoop@group2.com</value>
+</property>
+ 
+<property>
+     <name>yarn.resourcemanager.keytab</name>
+     <value>/home/hdoop/hadoop-3.3.1/keytabs/yarn.keytab</value>
+</property>
+ 
+<property>
+     <name>yarn.nodemanager.principal</name>
+     <value>yarn/hadoop@group2.com</value>
+</property>
+ 
+<property>
+     <name>yarn.nodemanager.keytab</name>
+     <value>/home/hdoop/hadoop-3.3.1/keytabs/yarn.keytab</value>
+</property>
+ 
+<property>
+     <name>yarn.nodemanager.container-executor.class</name>
+     <value>org.apache.hadoop.yarn.server.nodemanager.LinuxContainerExecutor</value>
+</property>
+ 
+<property>
+     <name>yarn.nodemanager.linux-container-executor.group</name>
+     <value>yarn</value>
+</property>
+
+Append the following code to hdfs-site.xml:
+
+<!-- Kerberos Configuration -->
+
+<property> 
+     <name>dfs.block.access.token.enable</name> 
+     <value>true</value> 
+</property> 
+ 
+<property> 
+     <name>dfs.namenode.keytab.file</name> 
+     <value>/home/hdoop/hadoop-3.3.1/keytabs/hdfs.keytab</value> 
+</property> 
+ 
+<property> 
+     <name>dfs.namenode.kerberos.principal</name> 
+     <value>hdfs/hadoop@group2.com</value> 
+</property> 
+
+<property> 
+     <name>dfs.namenode.kerberos.internal.spnego.principal</name> 
+     <value>HTTP/hadoop@group2.com</value> 
+</property> 
+ 
+<property> 
+     <name>dfs.secondary.namenode.keytab.file</name> 
+     <value>/home/hdoop/hadoop-3.3.1/keytabs/hdfs.keytab</value> 
+</property> 
+
+<property> 
+     <name>dfs.secondary.namenode.kerberos.principal</name> 
+     <value>hdfs/hadoop@group2.com</value>  
+</property> 
+
+<property> 
+     <name>dfs.secondary.namenode.kerberos.internal.spnego.principal</name> 
+     <value>HTTP/hadoop@group2.com</value> 
+</property>
+ 
+<property> 
+     <name>dfs.datanode.data.dir.perm</name> 
+     <value>750</value> 
+</property>
+
+<property> 
+     <name>dfs.datanode.address</name> 
+     <value>0.0.0.0:1004</value> 
+</property>  
+
+<property> 
+     <name>dfs.datanode.http.address</name> 
+     <value>0.0.0.0:1006</value> 
+</property>  
+
+<property> 
+     <name>dfs.datanode.keytab.file</name> 
+     <value>/home/hdoop/hadoop-3.3.1/keytabs/hdfs.keytab</value> 
+</property> 
+
+<property> 
+     <name>dfs.datanode.kerberos.principal</name> 
+     <value>hdfs/hadoop@group2.com</value> 
+</property> 
+
+<property> 
+     <name>dfs.datanode.kerberos.https.principal</name> 
+     <value>hdfs/hadoop@group2.com</value> 
+</property>
+
+<property> 
+     <name>dfs.web.authentication.kerberos.principal</name> 
+     <value>hdfs/hadoop@group2.com</value> 
+</property>
+
+Append the following code to mapred-site.xml:
+
+<!-- Kerberos Configuration -->
+<property>
+<name>mapreduce.jobhistory.keytab</name>
+<value>/home/hdoop/hadoop-3.3.1/keytabs/mapred.keytab</value>
+</property> 
+
+<property>
+<name>mapreduce.jobhistory.principal</name>
+<value>mapred/hadoop@group2.com</value>
+</property>
+
+
+
+
+Test Hadoop Authentication
+ hadoop fs -ls/       (with and without logging in to Kerberos)
+
+Cassandra Authentication Activation
+Edit cassandra.yaml
+specify authenticator:PasswordAuthenticator
+restart cassandra service
+
+Test it by running cqlsh command normally
+
+Now use
+cqlsh -u cassandra -p cassandra
+
+You will be able to access CQL Shell using the credentials
+
+
+Spark-Cassandra Code change
+Now we need to specify the credentials when reading/writing data using the connector too.
+We just need to add two extra options in the same code.
+Please check the read data code for reference.
+
+Run spark-cassandra connector
+spark-shell --packages com.datastax.spark:spark-cassandra-connector_2.12:3.1.0
+
+Read the same table from Cassandra without Authentication
+
+val df_read = spark.read
+  .format("org.apache.spark.sql.cassandra")
+  .option("spark.cassandra.connection.host", "127.0.0.1")
+  .option("spark.cassandra.connection.port", "9042")
+  .option("keyspace", "sparkdb")
+  .option("table", "survey_results")
+  .load()
+df_read.show
+
+
+Read the same table from Cassandra with Authentication
+
+
+val df_read = spark.read
+  .format("org.apache.spark.sql.cassandra")
+  .option("spark.cassandra.connection.host", "127.0.0.1")
+  .option("spark.cassandra.connection.port", "9042")
+  .option("spark.cassandra.auth.username", "cassandra")
+  .option("spark.cassandra.auth.password", "cassandra")
+  .option("keyspace", "sparkdb")
+  .option("table", "survey_results")
+  .load()
+df_read.show
+
+
+
+==========================================================================
+                      END OF IMPLEMENTATION PART 3
+==========================================================================
+
